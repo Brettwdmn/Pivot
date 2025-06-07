@@ -80,28 +80,36 @@
 
       pivotLayer.clearLayers();
 
-      var geojson = currentPolygon.toGeoJSON();
-      var polygon = turf.polygon(geojson.geometry.coordinates);
-      var bbox = turf.bbox(polygon);
-      var maxRadius = 2640;
-      var minRadius = 1000;
-      var radiusStep = 200;
-      var ftToKm = 0.0003048;
+      const geojson = currentPolygon.toGeoJSON();
+      const polygon = turf.polygon(geojson.geometry.coordinates);
+      const radiusFt = 2640;
+      const spacingFt = radiusFt / 2;
 
-      for (let r = maxRadius; r >= minRadius; r -= radiusStep) {
-          var grid = turf.pointGrid(bbox, r * ftToKm, { units: 'kilometers' });
-          var insidePoints = turf.pointsWithinPolygon(grid, polygon);
+      const bounds = turf.bbox(polygon);
+      const minX = bounds[0];
+      const minY = bounds[1];
+      const maxX = bounds[2];
+      const maxY = bounds[3];
 
-          insidePoints.features.forEach(function(pt) {
-              var circle = turf.circle(pt.geometry.coordinates, r * ftToKm, { steps: 64, units: 'kilometers' });
-              var intersect = turf.intersect(circle, polygon);
+      const ftToDeg = 1 / 364000; // approx degrees per foot
+      const stepDeg = spacingFt * ftToDeg;
+      const radiusDeg = radiusFt * ftToDeg;
+      const circleAreaFt2 = Math.PI * radiusFt * radiusFt;
 
-              if (intersect) {
-                  var circleArea = Math.PI * Math.pow(r, 2);
-                  var intersectArea = turf.area(intersect);
-                  var full = intersectArea >= circleArea * 0.95;
+      for (let x = minX; x <= maxX; x += stepDeg) {
+          for (let y = minY; y <= maxY; y += stepDeg) {
+              const pt = turf.point([x, y]);
+              if (!turf.booleanPointInPolygon(pt, polygon)) continue;
 
-                  L.geoJSON(intersect, {
+              const circle = turf.circle(pt.geometry.coordinates, radiusFt * 0.0003048, {
+                  steps: 64,
+                  units: 'kilometers'
+              });
+              const overlap = turf.intersect(circle, polygon);
+              if (overlap) {
+                  const overlapArea = turf.area(overlap);
+                  const full = overlapArea >= circleAreaFt2 * 0.95;
+                  L.geoJSON(overlap, {
                       style: {
                           color: full ? 'green' : 'orange',
                           weight: 2,
@@ -109,7 +117,7 @@
                       }
                   }).addTo(pivotLayer);
               }
-          });
+          }
       }
   });
 </script>
