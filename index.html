@@ -15,10 +15,22 @@
             z-index: 1000;
             padding: 6px 12px;
         }
+        #versionTag {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: sans-serif;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="versionTag">v1</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
