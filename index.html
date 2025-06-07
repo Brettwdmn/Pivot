@@ -26,11 +26,11 @@
 <script>
   var map = L.map('map').setView([39, -98], 4);
   var imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Imagery \u00a9 Esri'
+      attribution: 'Imagery © Esri'
   }).addTo(map);
 
   var reference = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Boundary data \u00a9 Esri',
+      attribution: 'Boundary data © Esri',
       interactive: false
   }).addTo(map);
 
@@ -52,81 +52,50 @@
   });
   map.addControl(drawControl);
 
-  var RADIUS_FT = 2640; // 1/2 mile
-  var FT_TO_KM = 0.0003048; // convert feet to kilometers
-  var currentPolygon = null;
   var optimizeBtn = document.getElementById('optimizeButton');
-
-  function generatePivots(polygon) {
-      pivotLayer.clearLayers();
-      var field = polygon.toGeoJSON(); // GeoJSON Feature
-      var geom = field.geometry;
-
-      // convert polygon to feet for grid search
-      var coords = geom.coordinates[0].map(function (c) {
-          var p = L.CRS.EPSG3857.project(L.latLng(c[1], c[0]));
-          return { x: p.x / 0.3048, y: p.y / 0.3048 }; // meters to feet
-      });
-      var xs = coords.map(c => c.x);
-      var ys = coords.map(c => c.y);
-      var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-      var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-
-      var rowSpacing = RADIUS_FT * Math.sqrt(3);
-      var colSpacing = RADIUS_FT * 2;
-      var row = 0;
-      var candidates = [];
-
-      for (var y = minY - RADIUS_FT; y <= maxY + RADIUS_FT; y += rowSpacing, row++) {
-          var offset = (row % 2 === 0) ? 0 : RADIUS_FT;
-          for (var x = minX - RADIUS_FT + offset; x <= maxX + RADIUS_FT; x += colSpacing) {
-              var latlng = L.CRS.EPSG3857.unproject(L.point(x * 0.3048, y * 0.3048));
-              var pt = turf.point([latlng.lng, latlng.lat]);
-              var circleGeo = turf.circle(pt, RADIUS_FT * FT_TO_KM, { steps: 64, units: 'kilometers' });
-              var intersection = turf.intersect(circleGeo, field);
-              if (intersection) {
-                  var areaFt2 = turf.area(intersection) * 10.7639; // square feet
-                  candidates.push({ latlng: latlng, circle: circleGeo, area: areaFt2 });
-              }
-          }
-      }
-
-      // greedy selection for maximum coverage
-      candidates.sort(function (a, b) { return b.area - a.area; });
-      var remaining = field;
-      var placed = [];
-      var circleArea = Math.PI * Math.pow(RADIUS_FT, 2);
-
-      candidates.forEach(function (c) {
-          var inter = turf.intersect(c.circle, remaining);
-          if (inter) {
-              var areaFt2 = turf.area(inter) * 10.7639;
-              placed.push({ latlng: c.latlng, poly: inter, full: areaFt2 >= circleArea * 0.99 });
-              var diff = turf.difference(remaining, c.circle);
-              remaining = diff || remaining;
-          }
-      });
-
-      // draw selected pivots
-      placed.forEach(function (p) {
-          var color = p.full ? 'green' : 'orange';
-          L.geoJSON(p.poly, { style: { color: color, weight: 2, fill: false } }).addTo(pivotLayer);
-          L.circleMarker(p.latlng, { radius: 4, color: 'red', fillColor: 'red', fillOpacity: 1 }).addTo(pivotLayer);
-      });
-  }
+  var currentPolygon = null;
 
   map.on(L.Draw.Event.CREATED, function (event) {
       drawnItems.clearLayers();
+      pivotLayer.clearLayers();
       currentPolygon = event.layer;
       drawnItems.addLayer(currentPolygon);
-      pivotLayer.clearLayers();
       optimizeBtn.disabled = false;
-      console.log('Polygon GeoJSON:', currentPolygon.toGeoJSON());
   });
 
-  optimizeBtn.addEventListener('click', function() {
-      if (currentPolygon) {
-          generatePivots(currentPolygon);
+  optimizeBtn.addEventListener('click', function () {
+      if (!currentPolygon) return;
+
+      pivotLayer.clearLayers();
+
+      var geojson = currentPolygon.toGeoJSON();
+      var bounds = turf.bbox(geojson);
+
+      var maxRadius = 2640; // 1/2 mile in feet
+      var ftToKm = 0.0003048; // feet to km
+      var radiusStep = 300;
+      var placed = [];
+      var usedArea = geojson;
+
+      for (let r = maxRadius; r >= 600; r -= radiusStep) {
+          var spacing = r * 2;
+          for (let x = bounds[0]; x <= bounds[2]; x += spacing * ftToKm / 111.32) {
+              for (let y = bounds[1]; y <= bounds[3]; y += spacing * ftToKm / 111.32) {
+                  var pt = turf.point([x, y]);
+                  var circle = turf.circle(pt, r * ftToKm, { steps: 64, units: 'kilometers' });
+                  var intersection = turf.intersect(circle, usedArea);
+                  if (intersection) {
+                      var area = turf.area(intersection);
+                      var fullArea = Math.PI * Math.pow(r, 2);
+                      var isFull = area >= (fullArea * 0.95);
+                      L.geoJSON(intersection, {
+                          style: { color: isFull ? 'green' : 'orange', weight: 2, fillOpacity: 0 }
+                      }).addTo(pivotLayer);
+                      placed.push({ center: pt, radius: r, full: isFull });
+                      usedArea = turf.difference(usedArea, circle) || usedArea;
+                  }
+              }
+          }
       }
   });
 </script>
