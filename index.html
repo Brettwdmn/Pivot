@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="versionTag">v2</div>
+<div id="versionTag">v1.1-debug</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -73,12 +73,14 @@
       currentPolygon = event.layer;
       drawnItems.addLayer(currentPolygon);
       optimizeBtn.disabled = false;
+      console.log("Polygon created.");
   });
 
   optimizeBtn.addEventListener('click', function () {
       if (!currentPolygon) return;
 
       pivotLayer.clearLayers();
+      console.log("Optimize button clicked.");
 
       const radiusFt = 2640;
       const spacingFt = 1;
@@ -102,6 +104,8 @@
       const spacingMeters = spacingFt * ftToMeters;
       const circleAreaFt2 = Math.PI * radiusFt * radiusFt;
 
+      let drawn = 0;
+
       for (let x = minX; x <= maxX; x += spacingMeters) {
           for (let y = minY; y <= maxY; y += spacingMeters) {
               const latlng = L.CRS.EPSG3857.unproject(L.point(x, y));
@@ -123,9 +127,13 @@
                           fillOpacity: 0
                       }
                   }).addTo(pivotLayer);
+                  drawn++;
+                  if (drawn % 1000 === 0) console.log(`Drawn ${drawn} pivots so far...`);
               }
           }
       }
+
+      console.log(`Optimization complete. Total pivots drawn: ${drawn}`);
   });
 </script>
 </body>
