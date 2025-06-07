@@ -25,8 +25,13 @@
 <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
 <script>
   var map = L.map('map').setView([39, -98], 4);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles \u00a9 Esri'
+  var imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Imagery \u00a9 Esri'
+  }).addTo(map);
+
+  var reference = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Boundary data \u00a9 Esri',
+      interactive: false
   }).addTo(map);
 
   var drawnItems = new L.FeatureGroup();
@@ -66,9 +71,9 @@
       var rowSpacing = RADIUS_FT * Math.sqrt(3);
       var colSpacing = RADIUS_FT * 2;
       var row = 0;
-      for (var y = minY + RADIUS_FT; y <= maxY - RADIUS_FT; y += rowSpacing, row++) {
+      for (var y = minY - RADIUS_FT; y <= maxY + RADIUS_FT; y += rowSpacing, row++) {
           var offset = (row % 2 === 0) ? 0 : RADIUS_FT;
-          for (var x = minX + RADIUS_FT + offset; x <= maxX - RADIUS_FT; x += colSpacing) {
+          for (var x = minX - RADIUS_FT + offset; x <= maxX + RADIUS_FT; x += colSpacing) {
               var latlng = L.CRS.EPSG3857.unproject(L.point(x * 0.3048, y * 0.3048));
               var pt = turf.point([latlng.lng, latlng.lat]);
               var inside = turf.booleanPointInPolygon(pt, geo);
