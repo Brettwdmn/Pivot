@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="versionTag">v1.1</div>
+<div id="versionTag">v1</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -90,8 +90,9 @@
 
       for (let r = maxRadius; r >= minRadius; r -= radiusStep) {
           var grid = turf.pointGrid(bbox, r * ftToKm, { units: 'kilometers' });
+          var insidePoints = turf.pointsWithinPolygon(grid, polygon);
 
-          grid.features.forEach(function(pt) {
+          insidePoints.features.forEach(function(pt) {
               var circle = turf.circle(pt.geometry.coordinates, r * ftToKm, { steps: 64, units: 'kilometers' });
               var intersect = turf.intersect(circle, polygon);
 
