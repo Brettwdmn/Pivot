@@ -53,7 +53,6 @@
   map.addControl(drawControl);
 
   var RADIUS_FT = 2640; // 1/2 mile
-  var FT_TO_KM = 0.0003048; // convert feet to kilometers
   var currentPolygon = null;
   var optimizeBtn = document.getElementById('optimizeButton');
 
@@ -62,12 +61,8 @@
 
       // build a Turf.js polygon from the Leaflet layer
       var latlngs = layer.getLatLngs()[0];
-      var coordsLL = latlngs.map(function(ll) { return [ll.lng, ll.lat]; });
-      if (coordsLL.length > 0 && (coordsLL[0][0] !== coordsLL[coordsLL.length-1][0] ||
-          coordsLL[0][1] !== coordsLL[coordsLL.length-1][1])) {
-          coordsLL.push([coordsLL[0][0], coordsLL[0][1]]);
-      }
-      var field = turf.polygon([coordsLL]);
+      var geojson = layer.toGeoJSON();
+      var field = turf.feature(geojson.geometry);
 
       // convert polygon coordinates to feet for the hex grid search
       var coords = latlngs.map(function (ll) {
@@ -89,8 +84,14 @@
           for (var x = minX - RADIUS_FT + offset; x <= maxX + RADIUS_FT; x += colSpacing) {
               var latlng = L.CRS.EPSG3857.unproject(L.point(x * 0.3048, y * 0.3048));
               var pt = turf.point([latlng.lng, latlng.lat]);
-              var circleGeo = turf.circle(pt, RADIUS_FT * FT_TO_KM, { steps: 64, units: 'kilometers' });
-              var intersection = turf.intersect(circleGeo, field);
+              var circleGeo = turf.circle(pt, RADIUS_FT, { steps: 64, units: 'feet' });
+              var intersection;
+              try {
+                  intersection = turf.intersect(circleGeo, field);
+              } catch (err) {
+                  console.error('intersect error', err);
+                  intersection = null;
+              }
               if (intersection) {
                   var areaFt2 = turf.area(intersection) * 10.7639; // square feet
                   candidates.push({ latlng: latlng, circle: circleGeo, area: areaFt2 });
@@ -104,15 +105,21 @@
       var placed = [];
       var circleArea = Math.PI * Math.pow(RADIUS_FT, 2);
 
-      candidates.forEach(function (c) {
-          var inter = turf.intersect(c.circle, remaining);
-          if (inter) {
-              var areaFt2 = turf.area(inter) * 10.7639;
-              placed.push({ latlng: c.latlng, poly: inter, full: areaFt2 >= circleArea * 0.99 });
-              var diff = turf.difference(remaining, c.circle);
-              remaining = diff || remaining;
-          }
-      });
+        candidates.forEach(function (c) {
+            var inter;
+            try {
+                inter = turf.intersect(c.circle, remaining);
+            } catch (err) {
+                console.error('intersect error', err);
+                inter = null;
+            }
+            if (inter) {
+                var areaFt2 = turf.area(inter) * 10.7639;
+                placed.push({ latlng: c.latlng, poly: inter, full: areaFt2 >= circleArea * 0.99 });
+                var diff = turf.difference(remaining, c.circle);
+                remaining = diff || remaining;
+            }
+        });
 
       // draw selected pivots
       placed.forEach(function (p) {
