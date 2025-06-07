@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="versionTag">v1</div>
+<div id="versionTag">v2</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -80,28 +80,35 @@
 
       pivotLayer.clearLayers();
 
+      const radiusFt = 2640;
+      const spacingFt = 1;
+      const ftToMeters = 0.3048;
+
       const geojson = currentPolygon.toGeoJSON();
       const polygon = turf.polygon(geojson.geometry.coordinates);
-      const radiusFt = 2640;
-      const spacingFt = radiusFt / 2;
 
-      const bounds = turf.bbox(polygon);
-      const minX = bounds[0];
-      const minY = bounds[1];
-      const maxX = bounds[2];
-      const maxY = bounds[3];
+      const projectedCoords = geojson.geometry.coordinates[0].map(coord => {
+          const latlng = L.latLng(coord[1], coord[0]);
+          const point = L.CRS.EPSG3857.project(latlng);
+          return [point.x, point.y];
+      });
 
-      const ftToDeg = 1 / 364000; // approx degrees per foot
-      const stepDeg = spacingFt * ftToDeg;
-      const radiusDeg = radiusFt * ftToDeg;
+      const xs = projectedCoords.map(c => c[0]);
+      const ys = projectedCoords.map(c => c[1]);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+      const radiusMeters = radiusFt * ftToMeters;
+      const spacingMeters = spacingFt * ftToMeters;
       const circleAreaFt2 = Math.PI * radiusFt * radiusFt;
 
-      for (let x = minX; x <= maxX; x += stepDeg) {
-          for (let y = minY; y <= maxY; y += stepDeg) {
-              const pt = turf.point([x, y]);
+      for (let x = minX; x <= maxX; x += spacingMeters) {
+          for (let y = minY; y <= maxY; y += spacingMeters) {
+              const latlng = L.CRS.EPSG3857.unproject(L.point(x, y));
+              const pt = turf.point([latlng.lng, latlng.lat]);
               if (!turf.booleanPointInPolygon(pt, polygon)) continue;
 
-              const circle = turf.circle(pt.geometry.coordinates, radiusFt * 0.0003048, {
+              const circle = turf.circle(pt.geometry.coordinates, radiusMeters / 1000, {
                   steps: 64,
                   units: 'kilometers'
               });
