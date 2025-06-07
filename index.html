@@ -53,16 +53,17 @@
   map.addControl(drawControl);
 
   var RADIUS_FT = 2640; // 1/2 mile
+  var FT_TO_KM = 0.0003048; // convert feet to kilometers
   var currentPolygon = null;
   var optimizeBtn = document.getElementById('optimizeButton');
 
   function generatePivots(polygon) {
       pivotLayer.clearLayers();
-      var geo = polygon.toGeoJSON();
-      var field = geo.geometry;
+      var field = polygon.toGeoJSON(); // GeoJSON Feature
+      var geom = field.geometry;
 
       // convert polygon to feet for grid search
-      var coords = field.coordinates[0].map(function (c) {
+      var coords = geom.coordinates[0].map(function (c) {
           var p = L.CRS.EPSG3857.project(L.latLng(c[1], c[0]));
           return { x: p.x / 0.3048, y: p.y / 0.3048 }; // meters to feet
       });
@@ -81,25 +82,26 @@
           for (var x = minX - RADIUS_FT + offset; x <= maxX + RADIUS_FT; x += colSpacing) {
               var latlng = L.CRS.EPSG3857.unproject(L.point(x * 0.3048, y * 0.3048));
               var pt = turf.point([latlng.lng, latlng.lat]);
-              var circleGeo = turf.circle(pt, (RADIUS_FT * 0.3048) / 1000, { steps: 64, units: 'kilometers' });
+              var circleGeo = turf.circle(pt, RADIUS_FT * FT_TO_KM, { steps: 64, units: 'kilometers' });
               var intersection = turf.intersect(circleGeo, field);
               if (intersection) {
-                  candidates.push({ latlng: latlng, circle: circleGeo, inter: intersection, area: turf.area(intersection) });
+                  var areaFt2 = turf.area(intersection) * 10.7639; // square feet
+                  candidates.push({ latlng: latlng, circle: circleGeo, area: areaFt2 });
               }
           }
       }
 
       // greedy selection for maximum coverage
       candidates.sort(function (a, b) { return b.area - a.area; });
-      var remaining = JSON.parse(JSON.stringify(field));
+      var remaining = field;
       var placed = [];
-      var circleArea = Math.PI * Math.pow(RADIUS_FT * 0.3048, 2);
+      var circleArea = Math.PI * Math.pow(RADIUS_FT, 2);
 
       candidates.forEach(function (c) {
           var inter = turf.intersect(c.circle, remaining);
           if (inter) {
-              var area = turf.area(inter);
-              placed.push({ latlng: c.latlng, poly: inter, full: area >= circleArea * 0.99 });
+              var areaFt2 = turf.area(inter) * 10.7639;
+              placed.push({ latlng: c.latlng, poly: inter, full: areaFt2 >= circleArea * 0.99 });
               var diff = turf.difference(remaining, c.circle);
               remaining = diff || remaining;
           }
