@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="versionTag">v1.1-debug</div>
+<div id="versionTag">v1.2-debug</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -87,7 +87,7 @@
       const ftToMeters = 0.3048;
 
       const geojson = currentPolygon.toGeoJSON();
-      const polygon = turf.polygon(geojson.geometry.coordinates);
+      const polygon = geojson;
 
       const projectedCoords = geojson.geometry.coordinates[0].map(coord => {
           const latlng = L.latLng(coord[1], coord[0]);
