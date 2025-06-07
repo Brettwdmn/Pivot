@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="versionTag">v1</div>
+<div id="versionTag">v1.1</div>
 <button id="optimizeButton" disabled>Optimize</button>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -81,33 +81,34 @@
       pivotLayer.clearLayers();
 
       var geojson = currentPolygon.toGeoJSON();
-      var bounds = turf.bbox(geojson);
+      var polygon = turf.polygon(geojson.geometry.coordinates);
+      var bbox = turf.bbox(polygon);
+      var maxRadius = 2640;
+      var minRadius = 1000;
+      var radiusStep = 200;
+      var ftToKm = 0.0003048;
 
-      var maxRadius = 2640; // 1/2 mile in feet
-      var ftToKm = 0.0003048; // feet to km
-      var radiusStep = 300;
-      var placed = [];
-      var usedArea = geojson;
+      for (let r = maxRadius; r >= minRadius; r -= radiusStep) {
+          var grid = turf.pointGrid(bbox, r * ftToKm, { units: 'kilometers' });
 
-      for (let r = maxRadius; r >= 600; r -= radiusStep) {
-          var spacing = r * 2;
-          for (let x = bounds[0]; x <= bounds[2]; x += spacing * ftToKm / 111.32) {
-              for (let y = bounds[1]; y <= bounds[3]; y += spacing * ftToKm / 111.32) {
-                  var pt = turf.point([x, y]);
-                  var circle = turf.circle(pt, r * ftToKm, { steps: 64, units: 'kilometers' });
-                  var intersection = turf.intersect(circle, usedArea);
-                  if (intersection) {
-                      var area = turf.area(intersection);
-                      var fullArea = Math.PI * Math.pow(r, 2);
-                      var isFull = area >= (fullArea * 0.95);
-                      L.geoJSON(intersection, {
-                          style: { color: isFull ? 'green' : 'orange', weight: 2, fillOpacity: 0 }
-                      }).addTo(pivotLayer);
-                      placed.push({ center: pt, radius: r, full: isFull });
-                      usedArea = turf.difference(usedArea, circle) || usedArea;
-                  }
+          grid.features.forEach(function(pt) {
+              var circle = turf.circle(pt.geometry.coordinates, r * ftToKm, { steps: 64, units: 'kilometers' });
+              var intersect = turf.intersect(circle, polygon);
+
+              if (intersect) {
+                  var circleArea = Math.PI * Math.pow(r, 2);
+                  var intersectArea = turf.area(intersect);
+                  var full = intersectArea >= circleArea * 0.95;
+
+                  L.geoJSON(intersect, {
+                      style: {
+                          color: full ? 'green' : 'orange',
+                          weight: 2,
+                          fillOpacity: 0
+                      }
+                  }).addTo(pivotLayer);
               }
-          }
+          });
       }
   });
 </script>
