@@ -1,23 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Pivot Layout Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-  <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Pivot Layout Tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        html, body, #map { height: 100%; margin: 0; padding: 0; }
+        #optimizeButton {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            padding: 6px 12px;
+        }
+    </style>
 </head>
 <body>
-  <div id="map"></div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-  <script>
-    var map = L.map('map').setView([39.5, -98.35], 4); // Centered on the U.S.
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: 'Map data © OpenStreetMap contributors'
-    }).addTo(map);
-  </script>
+<div id="map"></div>
+<button id="optimizeButton" disabled>Optimize</button>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+<script>
+  var map = L.map('map').setView([39, -98], 4);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles \u00a9 Esri'
+  }).addTo(map);
+
+  var drawnItems = new L.FeatureGroup();
+  var pivotLayer = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+  map.addLayer(pivotLayer);
+
+  var drawControl = new L.Control.Draw({
+      draw: {
+          polygon: true,
+          polyline: false,
+          rectangle: false,
+          circle: false,
+          marker: false,
+          circlemarker: false
+      },
+      edit: { featureGroup: drawnItems }
+  });
+  map.addControl(drawControl);
+
+  var RADIUS_FT = 2640; // 1/2 mile
+  var currentPolygon = null;
+  var optimizeBtn = document.getElementById('optimizeButton');
+
+  function generatePivots(polygon) {
+      pivotLayer.clearLayers();
+      var geo = polygon.toGeoJSON();
+      var poly = geo.geometry;
+      var coords = poly.coordinates[0].map(function(c){
+          var p = L.CRS.EPSG3857.project(L.latLng(c[1], c[0]));
+          return {x: p.x / 0.3048, y: p.y / 0.3048}; // convert meters to feet
+      });
+      var xs = coords.map(c => c.x);
+      var ys = coords.map(c => c.y);
+      var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+      var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+      var rowSpacing = RADIUS_FT * Math.sqrt(3);
+      var colSpacing = RADIUS_FT * 2;
+      var row = 0;
+      for (var y = minY + RADIUS_FT; y <= maxY - RADIUS_FT; y += rowSpacing, row++) {
+          var offset = (row % 2 === 0) ? 0 : RADIUS_FT;
+          for (var x = minX + RADIUS_FT + offset; x <= maxX - RADIUS_FT; x += colSpacing) {
+              var latlng = L.CRS.EPSG3857.unproject(L.point(x * 0.3048, y * 0.3048));
+              var pt = turf.point([latlng.lng, latlng.lat]);
+              var inside = turf.booleanPointInPolygon(pt, geo);
+              var circleGeo = turf.circle(pt, (RADIUS_FT * 0.3048) / 1000, {steps:64, units:'kilometers'});
+              var intersects = !turf.booleanDisjoint(circleGeo, geo);
+              if (inside || intersects) {
+                  var color = inside ? 'green' : 'orange';
+                  var circle = L.circle(latlng, {radius: RADIUS_FT * 0.3048, color: color, fill:false});
+                  pivotLayer.addLayer(circle);
+              }
+          }
+      }
+  }
+
+  map.on(L.Draw.Event.CREATED, function (event) {
+      drawnItems.clearLayers();
+      currentPolygon = event.layer;
+      drawnItems.addLayer(currentPolygon);
+      pivotLayer.clearLayers();
+      optimizeBtn.disabled = false;
+      console.log('Polygon GeoJSON:', currentPolygon.toGeoJSON());
+  });
+
+  optimizeBtn.addEventListener('click', function() {
+      if (currentPolygon) {
+          generatePivots(currentPolygon);
+      }
+  });
+</script>
 </body>
 </html>
